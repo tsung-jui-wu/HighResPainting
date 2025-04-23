@@ -1,5 +1,6 @@
 import cv2
 import numpy as np
+import matplotlib.pyplot as plt
 
 from utils import *
 
@@ -35,18 +36,7 @@ def motion_comp(prev_frame, curr_frame, num_points=500, points_to_use=500, trans
     return A, prev_points, curr_points
 
 def decompose_homography(homography, K=None):
-    """
-    Decompose homography matrix into rotation and translation components.
-    
-    Args:
-        homography: 3x3 homography matrix
-        K: 3x3 camera intrinsic matrix (if None, an estimate will be used)
-        
-    Returns:
-        rotations: List of possible rotation matrices
-        translations: List of possible translation vectors
-        normals: List of possible plane normals
-    """
+
     # If camera matrix is not provided, use a reasonable estimate
     if K is None:
         # Assume a reasonable camera matrix for a standard camera
@@ -65,17 +55,74 @@ def decompose_homography(homography, K=None):
     
     return rotations, translations, normals
 
+import cv2
+import numpy as np
+import matplotlib.pyplot as plt
+
+def visualize_transformation(prev_frame, curr_frame, transformation_matrix, is_homography=True):
+    """
+    Visualize how well the transformation aligns the previous frame to the current frame.
+    
+    Args:
+        prev_frame: Previous frame image
+        curr_frame: Current frame image
+        transformation_matrix: Either 2x3 affine matrix or 3x3 homography matrix
+        is_homography: Boolean indicating if the transformation is homography (True) or affine (False)
+    """
+    # Get image dimensions
+    h, w = prev_frame.shape[:2]
+    
+    # Apply transformation to the previous frame
+    if is_homography:
+        # For homography (3x3 matrix)
+        warped_frame = cv2.warpPerspective(prev_frame, transformation_matrix, (w, h))
+    else:
+        # For affine transformation (2x3 matrix)
+        warped_frame = cv2.warpAffine(prev_frame, transformation_matrix, (w, h))
+    
+    # Calculate difference between warped previous frame and current frame
+    # This shows areas where the transformation doesn't align perfectly
+    difference = cv2.absdiff(warped_frame, curr_frame)
+    
+    # Convert to grayscale if the images are color
+    if len(difference.shape) == 3:
+        difference_gray = cv2.cvtColor(difference, cv2.COLOR_BGR2GRAY)
+    else:
+        difference_gray = difference
+    
+    # Calculate metrics to quantify the quality of alignment
+    mean_error = np.mean(difference_gray)
+    max_error = np.max(difference_gray)
+    std_error = np.std(difference_gray)
+    
+    # Create a more visual representation of the difference
+    # Apply a colormap to make differences more visible
+    difference_color = cv2.applyColorMap(difference_gray, cv2.COLORMAP_JET)
+    
+    # Create a composite view for comparison
+    # Stack the images horizontally for comparison
+    composite1 = np.hstack((prev_frame, curr_frame))
+    composite2 = np.hstack((warped_frame, difference_color))
+    composite = np.vstack((composite1, composite2))
+    
+    # Display the results
+    plt.figure(figsize=(15, 10))
+    plt.imshow(cv2.cvtColor(composite, cv2.COLOR_BGR2RGB))
+    plt.title(f'Transformation Validation\nMean Error: {mean_error:.2f}, Max Error: {max_error}, StdDev: {std_error:.2f}')
+    plt.axis('off')
+    plt.tight_layout()
+    plt.show()
+    
+    print(f"Alignment Metrics:")
+    print(f"Mean Error: {mean_error:.2f}")
+    print(f"Max Error: {max_error}")
+    print(f"Standard Deviation: {std_error:.2f}")
+    
+    return mean_error, max_error, std_error, warped_frame, difference_color
+
 # Example usage:
-# rotations, translations, normals = decompose_homography(homography_matrix)
-# 
-# # Select the most likely solution (usually the first one for simple cases)
-# R = rotations[0]
-# t = translations[0]
-# 
-# # Convert rotation matrix to Euler angles
-# euler_angles = rotationMatrixToEulerAngles(R)
-# print(f"Camera rotation (degrees): {np.degrees(euler_angles)}")
-# print(f"Camera translation: {t}")
+# For homography:
+
 
 def main():
     video_path = './dataset/real_001.mp4'
@@ -88,6 +135,12 @@ def main():
     t = translations[0]
     print("rotations:", r)
     print("translations:", t)
+
+    mean_error, max_error, std_error, warped, diff = visualize_transformation(
+        frames[0], frames[1], transformMatrix, is_homography=True
+    )
+
+
 
 if __name__ == '__main__':
     main()
