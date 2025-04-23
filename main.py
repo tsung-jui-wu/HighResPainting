@@ -55,19 +55,12 @@ def decompose_homography(homography, K=None):
     
     return rotations, translations, normals
 
-import cv2
-import numpy as np
-import matplotlib.pyplot as plt
-
 def visualize_transformation(prev_frame, curr_frame, transformation_matrix, is_homography=True):
     """
-    Visualize how well the transformation aligns the previous frame to the current frame.
-    
-    Args:
-        prev_frame: Previous frame image
-        curr_frame: Current frame image
-        transformation_matrix: Either 2x3 affine matrix or 3x3 homography matrix
-        is_homography: Boolean indicating if the transformation is homography (True) or affine (False)
+    Top Left = Prev Frame
+    Top Right = Curr Frame
+    Bottom Left = Transformed Prev Frame
+    Bottom Right = Difference between two frames
     """
     # Get image dimensions
     h, w = prev_frame.shape[:2]
@@ -120,10 +113,6 @@ def visualize_transformation(prev_frame, curr_frame, transformation_matrix, is_h
     
     return mean_error, max_error, std_error, warped_frame, difference_color
 
-# Example usage:
-# For homography:
-
-
 def main():
     video_path = './dataset/real_001.mp4'
     frames = readData(video_path)
@@ -139,7 +128,6 @@ def main():
     mean_error, max_error, std_error, warped, diff = visualize_transformation(
         frames[0], frames[1], transformMatrix, is_homography=True
     )
-
 
 
 if __name__ == '__main__':
