@@ -7,13 +7,12 @@ from utils import *
 
 def main():
     video_path = './dataset/real_001.mp4'
-    step = 5
-    frames = readData(video_path, step = step)
+    frames = readData(video_path)
 
     stitchy = cv2.Stitcher.create()
     medium = []
 
-    batches = 5
+    batches = 3
     for i in tqdm(range(len(frames)//batches)):
         (dummy, output) = stitchy.stitch(frames[i:i+batches])
         if dummy != cv2.STITCHER_OK:

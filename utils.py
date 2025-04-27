@@ -1,8 +1,12 @@
 import cv2
 import matplotlib.pyplot as plt
 
-def readData(video_path, step = None):
+def readData(video_path, step = None, early_stop = None):
     cap = cv2.VideoCapture(video_path)
+    fps = int(cap.get(cv2.CAP_PROP_FPS))
+
+    if step is None:
+        step = fps // 2
 
     if not cap.isOpened():
         print("Error: Could not open video file.")
@@ -10,18 +14,19 @@ def readData(video_path, step = None):
 
     frames = []
     while True:
-        if step is not None:
-            for _ in range(step):  # Skip frames according to frame_step
-                ret, frame = cap.read()
-                if not ret:
-                    break
-        else:
+    
+        for _ in range(step):  # Skip frames according to frame_step
             ret, frame = cap.read()
+            if not ret:
+                break
 
         if not ret:
             break
 
         frames.append(frame)
+
+        if early_stop is not None and len(frames) == early_stop:
+            break
 
     cap.release()
     cv2.destroyAllWindows()
