@@ -154,8 +154,13 @@ def ProjectOntoPlane(InitialImage):
     return InitialImage, ti_x, ti_y
 
 def main():
-    video_path = "./dataset/real_001.mp4"
+    video_path = "./dataset/forest/forest1.mp4"
     frames = readData(video_path, early_stop = None)
+
+    video_path2 = "./dataset/forest/forest2.mp4"
+    frame2 = readData(video_path2, early_stop = None)
+
+    frames.extend(frame2)
 
     BaseImage, _, _ = ProjectOntoPlane(frames[0])
     for i in tqdm(range(1, len(frames))):
@@ -165,8 +170,9 @@ def main():
     
     StitchedImage = StitchImages(BaseImage, frames[0])
 
-    cv2.imwrite("outputs/horse7.png", StitchedImage)
-
+    # How about add middle frames after I have the baseline,
+    # If I use 1,5,10,15 .... frames to build the first image, i could use 1, 3, 8, 13 ... to enhance it
+    cv2.imwrite("outputs/forest/1.png", StitchedImage)
 
 if __name__ == '__main__':
     main()
