@@ -7,7 +7,8 @@ from utils import *
 
 
 def FindMatches(BaseImage, SecImage):
-    # Using SIFT to find the keypoints and decriptors in the images
+
+    # # Using SIFT to find the keypoints and decriptors in the images
     Sift = cv2.SIFT_create()
     BaseImage_kp, BaseImage_des = Sift.detectAndCompute(cv2.cvtColor(BaseImage, cv2.COLOR_BGR2GRAY), None)
     SecImage_kp, SecImage_des = Sift.detectAndCompute(cv2.cvtColor(SecImage, cv2.COLOR_BGR2GRAY), None)
@@ -16,6 +17,7 @@ def FindMatches(BaseImage, SecImage):
     # BF_Matcher = cv2.BFMatcher()
     # InitialMatches = BF_Matcher.knnMatch(BaseImage_des, SecImage_des, k=2)
 
+    #  USE Flann
     FLANN_INDEX_KDTREE = 1
     index_params = dict(algorithm = FLANN_INDEX_KDTREE, trees = 5)
     search_params = dict(checks = 50)
@@ -23,6 +25,7 @@ def FindMatches(BaseImage, SecImage):
     flann = cv2.FlannBasedMatcher(index_params, search_params)
 
     InitialMatches = flann.knnMatch(BaseImage_des, SecImage_des, k=2)
+
 
     # Applytng ratio test and filtering out the good matches.
     GoodMatches = []
@@ -112,8 +115,14 @@ def GetNewFrameSizeAndMatrix(HomographyMatrix, Sec_ImageShape, Base_ImageShape):
     return [New_Height, New_Width], Correction, HomographyMatrix
 
 def StitchImages(BaseImage, SecImage):
-    # Applying Cylindrical projection on SecImage
     SecImage_Cyl, mask_x, mask_y = ProjectOntoPlane(SecImage)
+    
+    SecImage_Mask = np.zeros(SecImage_Cyl.shape, dtype=np.uint8)
+    
+    # Filter out any out-of-bounds indices
+    valid_indices = (mask_x >= 0) & (mask_x < SecImage_Cyl.shape[1]) & (mask_y >= 0) & (mask_y < SecImage_Cyl.shape[0])
+    mask_x = mask_x[valid_indices]
+    mask_y = mask_y[valid_indices]
 
     # Getting SecImage Mask
     SecImage_Mask = np.zeros(SecImage_Cyl.shape, dtype=np.uint8)
@@ -154,13 +163,13 @@ def ProjectOntoPlane(InitialImage):
     return InitialImage, ti_x, ti_y
 
 def main():
-    video_path = "./dataset/forest/forest1.mp4"
+    video_path = "./dataset/real_001.mp4"
     frames = readData(video_path, early_stop = None)
 
-    video_path2 = "./dataset/forest/forest2.mp4"
-    frame2 = readData(video_path2, early_stop = None)
+    # video_path2 = "./dataset/forest/forest2.mp4"
+    # frame2 = readData(video_path2, early_stop = None)
 
-    frames.extend(frame2)
+    # frames.extend(frame2)
 
     BaseImage, _, _ = ProjectOntoPlane(frames[0])
     for i in tqdm(range(1, len(frames))):
@@ -172,7 +181,7 @@ def main():
 
     # How about add middle frames after I have the baseline,
     # If I use 1,5,10,15 .... frames to build the first image, i could use 1, 3, 8, 13 ... to enhance it
-    cv2.imwrite("outputs/forest/1.png", StitchedImage)
+    cv2.imwrite("outputs/horse/horse14.png", StitchedImage)
 
 if __name__ == '__main__':
     main()
