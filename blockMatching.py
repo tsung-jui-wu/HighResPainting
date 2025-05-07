@@ -7,18 +7,23 @@ from utils import readData
 
 # --------- Calculating Tranformation ------------------------
 
-def phase_correlation(frame1, frame2):
+def phase_correlation(frame1, frame2, threshold=5.0, use_window = False):
     # Convert to grayscale if needed
     if len(frame1.shape) == 3:
-        frame1_gray = cv2.cvtColor(frame1, cv2.COLOR_BGR2GRAY)
-        frame2_gray = cv2.cvtColor(frame2, cv2.COLOR_BGR2GRAY)
-    else:
-        frame1_gray = frame1
-        frame2_gray = frame2
+        frame1 = cv2.cvtColor(frame1, cv2.COLOR_BGR2GRAY)
+        frame2 = cv2.cvtColor(frame2, cv2.COLOR_BGR2GRAY)
     
-    # Compute FFT of both frames (without windowing)
-    fft1 = np.fft.fft2(frame1_gray)
-    fft2 = np.fft.fft2(frame2_gray)
+    h, w = frame1.shape
+    
+    # Add windowing
+    if use_window:
+        window = np.outer(np.hanning(h), np.hanning(w))
+        frame1 = frame1 * window
+        frame2 = frame2 * window
+    
+    # Compute FFT
+    fft1 = np.fft.fft2(frame1)
+    fft2 = np.fft.fft2(frame2)
     
     # Compute cross-power spectrum
     cross_power = fft1 * np.conj(fft2)
@@ -28,7 +33,6 @@ def phase_correlation(frame1, frame2):
     correlation = np.abs(np.fft.ifft2(cross_power))
     
     # Find peak in correlation
-    h, w = frame1_gray.shape
     y_peak, x_peak = np.unravel_index(np.argmax(correlation), correlation.shape)
     
     # Adjust for circular shift
@@ -36,10 +40,13 @@ def phase_correlation(frame1, frame2):
         y_peak = y_peak - h
     if x_peak > w // 2:
         x_peak = x_peak - w
+
+    if abs(x_peak) < threshold and abs(y_peak) < threshold:
+        x_peak, y_peak = 0, 0
     
     return x_peak, y_peak
 
-def hierarchical_phase_correlation(frame1, frame2, levels=3):
+def hierarchical_phase_correlation(frame1, frame2, levels=3, use_window=False):
     # Convert to grayscale
     if len(frame1.shape) == 3:
         frame1_gray = cv2.cvtColor(frame1, cv2.COLOR_BGR2GRAY)
@@ -71,7 +78,7 @@ def hierarchical_phase_correlation(frame1, frame2, levels=3):
         warped_frame1 = cv2.warpAffine(current_frame1, tx_matrix, (w, h))
         
         # Find remaining shift between warped_frame1 and frame2
-        dx, dy = phase_correlation(warped_frame1, current_frame2)
+        dx, dy = phase_correlation(warped_frame1, current_frame2, use_window=use_window)
         
         # Accumulate shift
         dx_total += dx
@@ -87,8 +94,8 @@ def hierarchical_phase_correlation(frame1, frame2, levels=3):
     
     return A
 
-def camera_motion_estimation(frame1, frame2, levels=3):
-    return hierarchical_phase_correlation(frame1, frame2, levels)
+def camera_motion_estimation(frame1, frame2, levels=3, use_window=False):
+    return hierarchical_phase_correlation(frame1, frame2, levels, use_window=use_window)
 
 
 # ------ Utils for printing to Plane ------------------
@@ -122,7 +129,7 @@ def expand_canvas(panorama, left=0, right=0, top=0, bottom=0):
 
 # --------------- Stitching Images ------------------------
 
-def CreateDynamicPanorama(video_path, step=10, levels=3, initial_border=100, expand_size=200):
+def CreateDynamicPanorama(video_path, step=10, levels=3, alpha=0.5, initial_border=100, expand_size=200, use_window=False):
     """
     Create a panorama from a video using a dynamically expanded canvas.
     
@@ -130,6 +137,7 @@ def CreateDynamicPanorama(video_path, step=10, levels=3, initial_border=100, exp
         video_path: Path to the video file
         step: Interval between frames to use
         levels: Levels of image pyramid
+        alpha: Blending rate, (1 - alpha) * current + alpha * new_frame [0 - 1]
         initial_border: Initial border around the first frame
         expand_size: Amount to expand the canvas when needed
         
@@ -166,7 +174,8 @@ def CreateDynamicPanorama(video_path, step=10, levels=3, initial_border=100, exp
     # Keep track of the canvas boundaries
     min_x, max_x = start_x, start_x + w - 1
     min_y, max_y = start_y, start_y + h - 1
-    
+
+    motion_history = []
     # Progressively add frames
     for i in tqdm(range(1, len(frames))):
         # Get new frame
@@ -179,9 +188,28 @@ def CreateDynamicPanorama(video_path, step=10, levels=3, initial_border=100, exp
         prev_frame = panorama[prev_y:prev_y+h, prev_x:prev_x+w].copy()
         
         # Estimate motion between new frame and previous frame
-        transform_matrix = camera_motion_estimation(new_frame, prev_frame, levels=levels)
-        dx, dy = transform_matrix[0, 2], transform_matrix[1, 2]  # Extract translati
+        transform_matrix = camera_motion_estimation(new_frame, prev_frame, levels=levels, use_window=use_window)
+        dx, dy = transform_matrix[0, 2], transform_matrix[1, 2]
         
+        # Apply temporal filtering for smoother motion
+        # if len(motion_history) >= motion_history_size:
+        #     # Calculate median motion
+        #     median_dx = np.median([m[0] for m in motion_history])
+        #     median_dy = np.median([m[1] for m in motion_history])
+            
+        #     # If current motion is very different from median, consider it as noise
+        #     if abs(dx - median_dx) > motion_threshold or abs(dy - median_dy) > motion_threshold:
+        #         dx = median_dx
+        #         dy = median_dy
+        #         transform_matrix[0, 2] = dx
+        #         transform_matrix[1, 2] = dy
+            
+        #     # Remove oldest motion
+        #     motion_history.pop(0)
+        
+        # # Add current motion to history
+        # motion_history.append((dx, dy))
+
         # Calculate new position (as integers)
         new_x = int(prev_x - dx)
         new_y = int(prev_y - dy)
@@ -233,9 +261,6 @@ def CreateDynamicPanorama(video_path, step=10, levels=3, initial_border=100, exp
         else:
             # For grayscale, a pixel is non-black if it's non-zero
             mask = new_frame > 0
-        
-        # Alpha blending parameter
-        alpha = 0.5
         
         # Apply the frame with alpha blending in overlap regions
         if len(new_frame.shape) == 3:
@@ -292,16 +317,19 @@ def CreateDynamicPanorama(video_path, step=10, levels=3, initial_border=100, exp
     return cropped_panorama
 
 if __name__ == "__main__":
-    video_path = "./dataset/new/clip1.mp4"
-    step = 10
+    filename = "refer_007"
+    video_path = f"./dataset/{filename}.mp4"
+    step = 5
     levels = 1
+    alpha = 0.5
+    use_window = False
 
     # Create panorama from video
-    panorama = CreateDynamicPanorama(video_path, step=step, levels=levels)
+    panorama = CreateDynamicPanorama(video_path, step=step, levels=levels, alpha=alpha, use_window=use_window)
     
     if panorama is not None:
         # Save the result
-        cv2.imwrite("panorama.jpg", panorama)
+        cv2.imwrite(f"{filename}_fft.jpg", panorama)
         
         # Display the panorama
         plt.figure(figsize=(20, 10))
